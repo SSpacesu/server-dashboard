@@ -18,17 +18,23 @@ while True:
 	disk = psutil.disk_usage("/")
 	battery = psutil.sensors_battery()
 	temps = psutil.sensors_temperatures()
-
 	cpu_temp = max(temp.current for temp in temps["coretemp"])
-
+	
 		
 	stats = {
     		"uptime": uptime,
     		"ram_percent": memory.percent,
+			"ram_used": memory.used,
+			"ram_size": memory.total,
     		"cpu_percent": cpu,
+			"cpu_temp": cpu_temp,
     		"disk_percent": disk.percent,
+			"disk_size": disk.total,
+			"disk_used": disk.used,
     		"battery_percent": battery.percent if battery else None,
-			"cpu_temp": max(temp.current for temp in psutil.sensors_temperatures()["coretemp"])
+			"battery_charging": battery.power_plugged if battery else None,
+			
+			
 	}
 
 	try:

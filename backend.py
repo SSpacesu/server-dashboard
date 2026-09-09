@@ -3,6 +3,7 @@ from fastapi import FastAPI
 import psycopg
 import os
 import time
+import psutil
 
 from dotenv import load_dotenv
 
@@ -38,7 +39,7 @@ def receive_stats(stats: dict):
     latest_stats = stats
 
     current_time = time.time()
-
+    ##sends these to database
     if current_time - last_saved_time >= 15:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -92,3 +93,48 @@ def get_history():
         })
 
     return history
+
+## for process list on frontend
+process_cache = {}
+@app.get("/api/processes")
+def get_processes():
+    processes = []
+
+    current_pids = set()
+
+    for proc in psutil.process_iter():
+        try:
+            pid = proc.pid
+            current_pids.add(pid)
+
+            if pid not in process_cache:
+                process_cache[pid] = proc
+
+                # starts cpu at None since it takes a sample over time
+                proc.cpu_percent(None)
+
+            cached_proc = process_cache[pid]
+
+            processes.append({
+                "pid": pid,
+                "name": cached_proc.name(),
+                "username": cached_proc.username(),
+                "status": cached_proc.status(),
+                "cmdline": " ".join(cached_proc.cmdline()),
+                "cpu_percent": cached_proc.cpu_percent(None),
+                "ram_percent": cached_proc.memory_percent()
+            })
+
+        except (
+            psutil.NoSuchProcess,
+            psutil.AccessDenied,
+            psutil.ZombieProcess
+        ):
+            pass
+
+    # Remove processes that no longer exist
+    for pid in list(process_cache):
+        if pid not in current_pids:
+            del process_cache[pid]
+
+    return processes
