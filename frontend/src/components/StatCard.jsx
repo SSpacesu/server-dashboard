@@ -4,7 +4,7 @@ function getDotColor(value, warningAt, dangerAt) {
   return 'var(--success)'
 }
 
-function StatCard({ label, value, unit, warningAt = 50, dangerAt = 80 }) {
+function StatCard({ label, value, unit, warningAt = 50, dangerAt = 80, subValue }) {
   const isPercent = unit === '%' && typeof value === 'number'
 
   return (
@@ -22,6 +22,7 @@ function StatCard({ label, value, unit, warningAt = 50, dangerAt = 80 }) {
         {value}
         {unit && <span className="stat-card-unit">{unit}</span>}
       </span>
+      {subValue && <span className="stat-card-subvalue">{subValue}</span>}
     </div>
   )
 }

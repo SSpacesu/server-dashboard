@@ -50,7 +50,14 @@ function App() {
         <div className="panel">
           <h2>Usage Stats</h2>
           <div className="stat-row">
-            <StatCard label="CPU Usage" value={stats.cpu_percent} unit="%" warningAt={70} dangerAt={90} />
+            <StatCard
+              label="CPU Usage"
+              value={stats.cpu_percent}
+              unit="%"
+              warningAt={70}
+              dangerAt={90}
+              subValue={stats.cpu_temp != null ? `${stats.cpu_temp.toFixed(1)}°C` : null}
+            />
             <StatCard label="RAM Usage" value={stats.ram_percent} unit="%" warningAt={70} dangerAt={90} />
             <StatCard label="Disk Usage" value={stats.disk_percent} unit="%" warningAt={70} dangerAt={90} />
             <StatCard label="Uptime" value={stats.uptime} />

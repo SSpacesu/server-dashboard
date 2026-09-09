@@ -17,13 +17,18 @@ while True:
 	cpu = psutil.cpu_percent(interval=1)
 	disk = psutil.disk_usage("/")
 	battery = psutil.sensors_battery()
+	temps = psutil.sensors_temperatures()
 
+	cpu_temp = max(temp.current for temp in temps["coretemp"])
+
+		
 	stats = {
     		"uptime": uptime,
     		"ram_percent": memory.percent,
     		"cpu_percent": cpu,
     		"disk_percent": disk.percent,
-    		"battery_percent": battery.percent if battery else None
+    		"battery_percent": battery.percent if battery else None,
+			"cpu_temp": max(temp.current for temp in psutil.sensors_temperatures()["coretemp"])
 	}
 
 	try:
