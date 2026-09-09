@@ -1,10 +1,18 @@
-import os
 import psutil
 import requests
 import time
 
+
+def get_uptime():
+	uptime_seconds = int(time.time() - psutil.boot_time())
+	days, remainder = divmod(uptime_seconds, 86400)
+	hours, remainder = divmod(remainder, 3600)
+	minutes, seconds = divmod(remainder, 60)
+	return f"{days:02d}:{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 while True:
-	uptime = os.popen("uptime -p").read().strip().removeprefix("up ")
+	uptime = get_uptime()
 	memory = psutil.virtual_memory()
 	cpu = psutil.cpu_percent(interval=1)
 	disk = psutil.disk_usage("/")
@@ -30,3 +38,4 @@ while True:
 
 	print(stats)
 	time.sleep(1)
+
