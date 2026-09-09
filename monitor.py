@@ -38,4 +38,3 @@ while True:
 
 	print(stats)
 	time.sleep(1)
-
