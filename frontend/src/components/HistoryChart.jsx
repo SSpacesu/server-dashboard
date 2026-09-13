@@ -4,15 +4,39 @@ const WIDTH = 300
 const HEIGHT = 100
 const Y_GRID_LINES = [0, 25, 50, 75, 100]
 const TIME_TICKS = [45, 30, 15]
+// Backend saves a sample every 15s; a bigger gap means the monitor/server was offline
+const GAP_THRESHOLD_MS = 30000
 
-function buildPoints(records, key) {
+// Insert zero-value points bounding any gap larger than expected, so offline periods
+// render as a drop to 0 instead of a straight line connecting the samples before/after
+function fillGaps(records) {
+  const result = []
+
+  records.forEach((record, index) => {
+    if (index > 0) {
+      const prevTime = new Date(records[index - 1].timestamp).getTime()
+      const currTime = new Date(record.timestamp).getTime()
+
+      if (currTime - prevTime > GAP_THRESHOLD_MS) {
+        result.push({ timestamp: new Date(prevTime + 1000).toISOString(), cpu_percent: 0, ram_percent: 0 })
+        result.push({ timestamp: new Date(currTime - 1000).toISOString(), cpu_percent: 0, ram_percent: 0 })
+      }
+    }
+
+    result.push(record)
+  })
+
+  return result
+}
+
+function buildPoints(records, key, oldestTime, newestTime) {
   if (records.length === 0) return ''
 
-  const step = records.length > 1 ? WIDTH / (records.length - 1) : 0
+  const span = newestTime - oldestTime || 1
 
   return records
-    .map((record, index) => {
-      const x = index * step
+    .map(record => {
+      const x = ((new Date(record.timestamp).getTime() - oldestTime) / span) * WIDTH
       const y = HEIGHT - (record[key] / 100) * HEIGHT
       return `${x},${y}`
     })
@@ -26,19 +50,21 @@ function formatTime(timestamp) {
 function HistoryChart({ history }) {
   // history arrives newest-first from the API; chart reads left-to-right chronologically
   const records = [...history].reverse()
+  const filledRecords = fillGaps(records)
   const svgRef = useRef(null)
   const [hoverIndex, setHoverIndex] = useState(null)
 
-  const cpuPoints = buildPoints(records, 'cpu_percent')
-  const ramPoints = buildPoints(records, 'ram_percent')
-
   const oldestTimestamp = records.length > 0 ? new Date(records[0].timestamp).getTime() : 0
   const newestTimestamp = records.length > 0 ? new Date(records[records.length - 1].timestamp).getTime() : 0
+
+  const cpuPoints = buildPoints(filledRecords, 'cpu_percent', oldestTimestamp, newestTimestamp)
+  const ramPoints = buildPoints(filledRecords, 'ram_percent', oldestTimestamp, newestTimestamp)
 
   // Use the actual elapsed time between the oldest and newest samples, since the backend stores
   // records on a 15-second interval rather than one minute apart.
   const minutesAgo = records.length > 1 ? Math.max((newestTimestamp - oldestTimestamp) / 60000, 0) : 0
 
+  // Only show tick labels that actually fall within the visible time range
   const timeTicks = [
     ...(minutesAgo >= 60 ? [{ minutes: 60, label: '1hr' }] : []),
     ...TIME_TICKS.filter(minutes => minutes > 0 && minutes < minutesAgo && minutes < 60).map(minutes => ({
@@ -49,21 +75,32 @@ function HistoryChart({ history }) {
   ]
 
   const handleMouseMove = event => {
-    if (records.length === 0) return
+    if (filledRecords.length === 0) return
 
     const rect = svgRef.current.getBoundingClientRect()
     const ratio = (event.clientX - rect.left) / rect.width
-    const index = Math.round(ratio * (records.length - 1))
+    const targetTime = oldestTimestamp + ratio * (newestTimestamp - oldestTimestamp || 1)
 
-    setHoverIndex(Math.min(Math.max(index, 0), records.length - 1))
+    // Points are spaced by real time now (not index), so find whichever sample is closest in time
+    let closestIndex = 0
+    let closestDiff = Infinity
+    filledRecords.forEach((record, index) => {
+      const diff = Math.abs(new Date(record.timestamp).getTime() - targetTime)
+      if (diff < closestDiff) {
+        closestDiff = diff
+        closestIndex = index
+      }
+    })
+
+    setHoverIndex(closestIndex)
   }
 
   const handleMouseLeave = () => setHoverIndex(null)
 
-  const hoveredRecord = hoverIndex !== null ? records[hoverIndex] : null
-  const hoverStep = records.length > 1 ? WIDTH / (records.length - 1) : 0
-  const hoverX = hoverIndex !== null ? hoverIndex * hoverStep : 0
-  const hoverLeftPercent = hoverIndex !== null ? (hoverX / WIDTH) * 100 : 0
+  const hoveredRecord = hoverIndex !== null ? filledRecords[hoverIndex] : null
+  const hoverSpan = newestTimestamp - oldestTimestamp || 1
+  const hoverX = hoveredRecord ? ((new Date(hoveredRecord.timestamp).getTime() - oldestTimestamp) / hoverSpan) * WIDTH : 0
+  const hoverLeftPercent = hoveredRecord ? (hoverX / WIDTH) * 100 : 0
 
   return (
     <div className="history-chart">

@@ -1,3 +1,4 @@
+// Traffic-light indicator color based on configurable warning/danger thresholds
 function getDotColor(value, warningAt, dangerAt) {
   if (value >= dangerAt) return 'var(--danger)'
   if (value >= warningAt) return 'var(--warning)'
@@ -5,6 +6,7 @@ function getDotColor(value, warningAt, dangerAt) {
 }
 
 function StatCard({ label, value, unit, warningAt = 50, dangerAt = 80, subValue }) {
+  // Only percent-based numeric stats get the colored status dot
   const isPercent = unit === '%' && typeof value === 'number'
 
   return (

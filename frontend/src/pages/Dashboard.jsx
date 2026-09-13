@@ -4,12 +4,14 @@ import { Link } from 'react-router-dom'
 import StatCard from '../components/StatCard'
 import HistoryChart from '../components/HistoryChart'
 
+// Backend runs on the same host as the frontend, just on a different port
 const API_URL = `http://${window.location.hostname}:8000`
 
 function Dashboard() {
   const [stats, setStats] = useState(null)
   const [history, setHistory] = useState([])
 
+  // Poll the latest snapshot every 2s for the live stat cards
   useEffect(() => {
     const fetchStats = () => {
       fetch(`${API_URL}/api/stats`)
@@ -24,18 +26,29 @@ function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
+  // History updates less often since the backend only persists a sample every 15s
   useEffect(() => {
+    let timeoutId
+
     const fetchHistory = () => {
       fetch(`${API_URL}/api/history`)
         .then(response => response.json())
         .then(data => setHistory(data))
     }
 
+    // Align fetches to wall-clock :00/:15/:30/:45 so they land right after the backend saves
+    const scheduleNextFetch = () => {
+      const msUntilNextBoundary = 15000 - (Date.now() % 15000)
+      timeoutId = setTimeout(() => {
+        fetchHistory()
+        scheduleNextFetch()
+      }, msUntilNextBoundary)
+    }
+
     fetchHistory()
+    scheduleNextFetch()
 
-    const interval = setInterval(fetchHistory, 10000)
-
-    return () => clearInterval(interval)
+    return () => clearTimeout(timeoutId)
   }, [])
 
   if (!stats) {

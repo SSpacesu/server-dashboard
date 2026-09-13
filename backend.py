@@ -1,19 +1,30 @@
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 import psycopg
 import os
 import time
 import psutil
+#START file share imports
+import re
+from pathlib import Path
+from uuid import uuid4
+UPLOAD_DIRECTORY = Path("/srv/storage/shared")
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
+CHUNK_SIZE = 1024 * 1024  # 1 MB
+#END file share imports
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.254.50:5173","http://100.94.85.86:5173"],
+    allow_origins=["http://192.168.254.50:5173",
+                   "http://100.94.85.86:5173",
+                   "http://homeserverhp:5173",
+                   "http://homeserverhp.lan:5173",],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -138,3 +149,157 @@ def get_processes():
             del process_cache[pid]
 
     return processes
+
+
+#File uploads
+@app.post("/api/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    folder: str = Form(""),
+):
+    original_name = file.filename or ""
+
+    # Handle both Unix and Windows-style paths supplied by a client.
+    basename = original_name.replace("\\", "/").split("/")[-1]
+
+    # Keep only conservative filename characters.
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", basename)
+    safe_name = safe_name.lstrip(".")
+
+    if not safe_name or safe_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Limit the filename length while preserving a short extension.
+    suffix = Path(safe_name).suffix[:20]
+    stem = Path(safe_name).stem[:120] or "upload"
+
+    # A random prefix prevents one upload from overwriting another.
+    stored_name = f"{uuid4().hex}_{stem}{suffix}"
+
+    upload_root = UPLOAD_DIRECTORY.resolve()
+    requested_directory = (upload_root / folder).resolve()
+
+
+    #makes sure requested directory is within the upload root
+    try:
+        requested_directory.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid destination folder",
+        ) 
+    
+    #confirms path exists and it is directory not a file
+    if not requested_directory.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="Destination folder does not exist",
+        )
+    
+    destination = requested_directory / stored_name
+
+
+    bytes_written = 0
+
+    try:
+        UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
+
+        with destination.open("xb") as output:
+            while chunk := await file.read(CHUNK_SIZE):
+                bytes_written += len(chunk)
+
+                if bytes_written > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File exceeds the 100 MB upload limit",
+                    )
+
+                output.write(chunk)
+
+    except HTTPException:
+        destination.unlink(missing_ok=True)
+        raise
+    except OSError:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail="The server could not save the uploaded file",
+        )
+    finally:
+        await file.close()
+
+    return {
+        "message": "Upload complete",
+        "original_filename": original_name,
+        "stored_filename": stored_name,
+        "size": bytes_written,
+    }
+
+@app.get("/api/folders")
+def list_folders(path: str = ""):
+    upload_root = UPLOAD_DIRECTORY.resolve()
+    requested_directory = (upload_root / path).resolve()
+
+    try:
+        requested_directory.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid folder path",
+        )
+
+    if not requested_directory.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail="Folder does not exist",
+        )
+
+    folders = sorted(
+        [
+            item.name
+            for item in requested_directory.iterdir()
+            if item.is_dir() and not item.name.startswith(".")
+        ],
+        key=str.casefold,
+    )
+
+    files = sorted(
+    [
+        item.name
+        for item in requested_directory.iterdir()
+        if item.is_file() and not item.name.startswith(".")
+    ],
+    key=str.casefold,
+    )
+    return {
+        "path": path,
+        "folders": folders,
+        "files": files,
+    }
+
+@app.get("/api/file")
+def get_file(path: str, download: bool = False):
+    upload_root = UPLOAD_DIRECTORY.resolve()
+    requested_file = (upload_root / path).resolve()
+
+    try:
+        requested_file.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file path",
+        )
+
+    if not requested_file.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="File does not exist",
+        )
+
+    if download:
+        return FileResponse(
+            requested_file,
+            filename=requested_file.name,
+        )
+
+    return FileResponse(requested_file)

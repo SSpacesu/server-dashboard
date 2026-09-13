@@ -10,6 +10,7 @@ function formatMB(bytes) {
 function RamDetails() {
   const [stats, setStats] = useState(null)
   const [processes, setProcesses] = useState([])
+  // Column currently used to order the process table; toggled by clicking a header
   const [sortKey, setSortKey] = useState('ram_percent')
 
   useEffect(() => {
@@ -40,6 +41,7 @@ function RamDetails() {
     return () => clearInterval(interval)
   }, [])
 
+  // Numeric columns sort highest first; text columns (name, user, status) sort alphabetically
   const sortedProcesses = [...processes].sort((a, b) => {
     const valueA = a[sortKey]
     const valueB = b[sortKey]
@@ -82,6 +84,7 @@ function RamDetails() {
         <h2>Running Processes</h2>
         <table className="process-table">
           <thead>
+            {/* Click a header to re-sort the table by that column */}
             <tr>
               <th onClick={() => setSortKey('pid')} className="process-table-sortable">PID</th>
               <th onClick={() => setSortKey('name')} className="process-table-sortable">Name</th>

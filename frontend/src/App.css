@@ -338,3 +338,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex: none;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .sidebar a {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+}
+@media (max-width: 768px) {
+  .main-content {
+    padding: 16px 12px;
+  }
+
+  .panel {
+    padding: 14px 12px;
+    margin-bottom: 16px;
+  }
+}
+@media (max-width: 768px) {
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-row {
+    grid-template-columns: 1fr; /* Full-width cards on small phones */
+  }
+}

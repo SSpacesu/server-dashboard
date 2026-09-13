@@ -1,3 +1,4 @@
+// Placeholder page reachable from the sidebar; no settings implemented yet
 function Settings() {
   return (
     <>
