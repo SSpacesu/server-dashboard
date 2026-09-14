@@ -56,6 +56,10 @@ function FileBrowser() {
         }
 
         loadFolders()
+
+        const interval = setInterval(loadFolders, 5000)
+
+        return () => clearInterval(interval)
         }, [currentPath])
 
     
