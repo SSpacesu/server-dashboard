@@ -1,5 +1,5 @@
 import './FileBrowser.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const API_URL = `http://${window.location.hostname}:8000`
 const getLocalFileKey = file => `${file.name}:${file.size}:${file.lastModified}`
@@ -10,6 +10,15 @@ const formatFileSize = bytes => {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`
 }
 
+const formatUploadSpeed = bytesPerSecond => {
+    if (!bytesPerSecond) return 'Starting...'
+    if (bytesPerSecond < 1024 ** 2) {
+        return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
+    }
+
+    return `${(bytesPerSecond / 1024 ** 2).toFixed(1)} MB/s`
+}
+
 function FileBrowser() {
     const [currentPath, setCurrentPath] = useState('')
     const [folders, setFolders] = useState([])
@@ -17,8 +26,12 @@ function FileBrowser() {
     const [selectedFiles, setSelectedFiles] = useState([])
     const [uploading, setUploading] = useState(false)
     const [uploadMessage, setUploadMessage] = useState('')
+    const [uploadProgress, setUploadProgress] = useState({})
     const [isDragging, setIsDragging] = useState(false)
     const [error, setError] = useState('')
+    const uploadRequests = useRef(new Map())
+    const cancelledUploadKeys = useRef(new Set())
+    const uploadSamples = useRef(new Map())
     
 
     useEffect(() => {
@@ -81,35 +94,126 @@ function FileBrowser() {
 
         setUploading(true)
         setUploadMessage(`Uploading 0 of ${selectedFiles.length}...`)
+        setUploadProgress(
+            Object.fromEntries(
+                selectedFiles.map(file => [getLocalFileKey(file), {
+                    status: 'queued',
+                    percent: 0,
+                    speed: 0,
+                }])
+            )
+        )
+        cancelledUploadKeys.current.clear()
+        uploadSamples.current.clear()
 
         let uploadedCount = 0
+        let currentFile = null
 
         try {
             for (const selectedFile of selectedFiles) {
+            const fileKey = getLocalFileKey(selectedFile)
+            if (cancelledUploadKeys.current.has(fileKey)) continue
+
+            currentFile = selectedFile
             const formData = new FormData()
             formData.append('file', selectedFile)
             formData.append('folder', currentPath)
 
-            const response = await fetch(`${API_URL}/api/upload`, {
-                method: 'POST',
-                body: formData,
-            })
+            let result
 
-            const result = await response.json()
+            try {
+                result = await new Promise((resolve, reject) => {
+                    const request = new XMLHttpRequest()
+                    uploadRequests.current.set(fileKey, request)
+                    uploadSamples.current.set(fileKey, [])
 
-            if (!response.ok) {
-                throw new Error(
-                `${selectedFile.name}: ${result.detail || 'Upload failed'}`
-                )
+                    setUploadProgress(progress => ({
+                        ...progress,
+                        [fileKey]: { status: 'uploading', percent: 0, speed: 0 },
+                    }))
+
+                    request.upload.addEventListener('progress', progressEvent => {
+                        if (!progressEvent.lengthComputable) return
+
+                        const now = performance.now()
+                        const samples = uploadSamples.current.get(fileKey) || []
+                        samples.push({ time: now, loaded: progressEvent.loaded })
+
+                        while (samples.length > 1 && now - samples[0].time > 3000) {
+                            samples.shift()
+                        }
+
+                        const oldestSample = samples[0]
+                        const elapsedSeconds = (now - oldestSample.time) / 1000
+                        const speed = elapsedSeconds > 0
+                            ? (progressEvent.loaded - oldestSample.loaded) / elapsedSeconds
+                            : 0
+
+                        setUploadProgress(progress => ({
+                            ...progress,
+                            [fileKey]: {
+                                status: 'uploading',
+                                percent: Math.round(
+                                    (progressEvent.loaded / progressEvent.total) * 100
+                                ),
+                                speed,
+                            },
+                        }))
+                    })
+
+                    request.addEventListener('load', () => {
+                        uploadRequests.current.delete(fileKey)
+                        const responseBody = (() => {
+                            try {
+                                return JSON.parse(request.responseText)
+                            } catch {
+                                return {}
+                            }
+                        })()
+
+                        if (request.status < 200 || request.status >= 300) {
+                            reject(new Error(
+                                `${selectedFile.name}: ${responseBody.detail || 'Upload failed'}`
+                            ))
+                            return
+                        }
+
+                        resolve(responseBody)
+                    })
+
+                    request.addEventListener('abort', () => {
+                        uploadRequests.current.delete(fileKey)
+                        const cancellationError = new Error('Upload cancelled')
+                        cancellationError.code = 'UPLOAD_CANCELLED'
+                        reject(cancellationError)
+                    })
+
+                    request.addEventListener('error', () => {
+                        uploadRequests.current.delete(fileKey)
+                        reject(new Error(`${selectedFile.name}: Upload connection failed`))
+                    })
+
+                    request.open('POST', `${API_URL}/api/upload`)
+                    request.send(formData)
+                })
+            } catch (requestError) {
+                if (requestError.code === 'UPLOAD_CANCELLED') continue
+                throw requestError
             }
 
             uploadedCount += 1
+
+            setUploadProgress(progress => ({
+                ...progress,
+                [fileKey]: { status: 'complete', percent: 100, speed: progress[fileKey]?.speed || 0 },
+            }))
 
             setFiles(existingFiles =>
                 [...existingFiles, result.stored_filename].sort((a, b) =>
                 a.localeCompare(b)
                 )
             )
+            currentFile = null
 
             setUploadMessage(
                 `Uploading ${uploadedCount} of ${selectedFiles.length}...`
@@ -125,6 +229,18 @@ function FileBrowser() {
             setSelectedFiles([])
             uploadForm.reset()
         } catch (requestError) {
+            const failedFile = currentFile
+
+            if (failedFile) {
+                setUploadProgress(progress => ({
+                    ...progress,
+                    [getLocalFileKey(failedFile)]: {
+                        ...progress[getLocalFileKey(failedFile)],
+                        status: 'error',
+                    },
+                }))
+            }
+
             setUploadMessage(
             `Uploaded ${uploadedCount} of ${selectedFiles.length}. ${requestError.message}`
             )
@@ -165,6 +281,8 @@ function FileBrowser() {
     
     const removeSelectedFile = fileToRemove => {
         const keyToRemove = getLocalFileKey(fileToRemove)
+        cancelledUploadKeys.current.add(keyToRemove)
+        uploadRequests.current.get(keyToRemove)?.abort()
 
         setSelectedFiles(existingFiles =>
             existingFiles.filter(
@@ -228,6 +346,7 @@ function FileBrowser() {
                 `${API_URL}/api/file?path=${encodeURIComponent(filePath)}`
 
             const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(fileName)
+            const isVideo = /\.(mp4|webm|ogg|mov|m4v|avi|mkv)$/i.test(fileName)
 
             return (
                 <li key={fileName}>
@@ -238,6 +357,18 @@ function FileBrowser() {
                         alt={fileName}
                         width="180"
                         loading="lazy"
+                    />
+                    <div>{fileName}</div>
+                    </>
+                ) : isVideo ? (
+                    <>
+                    <video
+                        className="file-preview-video"
+                        src={fileUrl}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        aria-label={fileName}
                     />
                     <div>{fileName}</div>
                     </>
@@ -306,11 +437,39 @@ function FileBrowser() {
 
                     <ul className="upload-queue__list">
                     {selectedFiles.map(file => (
-                        <li key={getLocalFileKey(file)}>
+                        <li
+                            key={getLocalFileKey(file)}
+                            className={`upload-queue__item upload-queue__item--${
+                                uploadProgress[getLocalFileKey(file)]?.status || 'queued'
+                            }`}
+                        >
                         <div>
                             <strong>{file.name}</strong>
-                            <span>{formatFileSize(file.size)}</span>
+                            <span>
+                                {uploadProgress[getLocalFileKey(file)]?.status === 'complete'
+                                    ? 'Uploaded'
+                                    : uploadProgress[getLocalFileKey(file)]?.status === 'error'
+                                        ? 'Upload failed'
+                                        : `${formatFileSize(file.size)}${
+                                            uploadProgress[getLocalFileKey(file)]?.status === 'uploading'
+                                                ? ` - ${formatUploadSpeed(uploadProgress[getLocalFileKey(file)].speed)}`
+                                                : ''
+                                        }`}
+                            </span>
                         </div>
+
+                        <div className="upload-queue__progress">
+                            <div
+                                className="upload-queue__progress-bar"
+                                style={{
+                                    width: `${uploadProgress[getLocalFileKey(file)]?.percent || 0}%`,
+                                }}
+                            />
+                        </div>
+
+                        <span className="upload-queue__percent">
+                            {uploadProgress[getLocalFileKey(file)]?.percent || 0}%
+                        </span>
 
                         <button
                             type="button"
