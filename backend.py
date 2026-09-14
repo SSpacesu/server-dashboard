@@ -21,8 +21,8 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.254.50:5173",
-                   "http://100.94.85.86:5173",
+    allow_origins=[os.getenv("SERVER_IP"),
+                   os.getenv("TAILSCALE_IP"),
                    "http://homeserverhp:5173",
                    "http://homeserverhp.lan:5173",],
     allow_credentials=True,
