@@ -1,7 +1,7 @@
 import './FileBrowser.css'
 import { useEffect, useRef, useState } from 'react'
 
-const API_URL = `http://${window.location.hostname}:8000`
+//const API_URL = `http://${window.location.hostname}:8000` not used by nginx
 const getLocalFileKey = file => `${file.name}:${file.size}:${file.lastModified}`
 
 const formatFileSize = bytes => {
@@ -40,7 +40,7 @@ function FileBrowser() {
             setError('')
 
             const response = await fetch(
-                `${API_URL}/api/folders?path=${encodeURIComponent(currentPath)}`
+                `/api/folders?path=${encodeURIComponent(currentPath)}`
             )
 
             if (!response.ok) {
@@ -197,7 +197,7 @@ function FileBrowser() {
                         reject(new Error(`${selectedFile.name}: Upload connection failed`))
                     })
 
-                    request.open('POST', `${API_URL}/api/upload`)
+                    request.open('POST', `/api/upload`)
                     request.send(formData)
                 })
             } catch (requestError) {
@@ -316,8 +316,8 @@ function FileBrowser() {
         </nav>
 
         {error && <p className="error-message">{error}</p>}
-
-        <ul>
+        <h2>Folders</h2>
+        <ul className="folder-list">
             {folders.map(folder => (
                 <li key={folder}>
                     <button type="button" onClick={() => openFolder(folder)}>
@@ -328,26 +328,27 @@ function FileBrowser() {
         </ul>
         
 
-        <h2>Files <button
+        <h2>Files 
+            {/*<button
             style={{ float: 'right' }}
             type="button"
             onClick={goUp}
             disabled={!currentPath}
         >
         Back
-        </button></h2>
+        </button>*/}</h2>
 
         {files.length === 0 ? (
         <p>No files in this folder.</p>
         ) : (
-        <ul>
+        <ul className="file-list">
            {files.map(fileName => {
             const filePath = currentPath
                 ? `${currentPath}/${fileName}`
                 : fileName
 
             const fileUrl =
-                `${API_URL}/api/file?path=${encodeURIComponent(filePath)}`
+                `/api/file?path=${encodeURIComponent(filePath)}`
 
             const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(fileName)
             const isVideo = /\.(mp4|webm|ogg|mov|m4v|avi|mkv)$/i.test(fileName)

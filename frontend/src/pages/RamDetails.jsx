@@ -15,7 +15,7 @@ function RamDetails() {
 
   useEffect(() => {
     const fetchStats = () => {
-      fetch(`${API_URL}/api/stats`)
+      fetch(`/api/stats`)
         .then(response => response.json())
         .then(data => setStats(data))
     }
@@ -29,7 +29,7 @@ function RamDetails() {
 
   useEffect(() => {
     const fetchProcesses = () => {
-      fetch(`${API_URL}/api/processes`)
+      fetch(`/api/processes`)
         .then(response => response.json())
         .then(data => setProcesses(data))
     }

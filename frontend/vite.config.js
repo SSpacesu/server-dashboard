@@ -8,7 +8,13 @@ export default defineConfig({
     allowedHosts: [
       'homeserverhp',
       'homeserverhp.lan'
-
-    ]
+    ],
+    //proxy so dev and build both work without dynamic api url
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true
+      }
+    }
   }
 })

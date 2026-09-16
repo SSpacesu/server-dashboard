@@ -8,7 +8,6 @@ import psutil
 #START file share imports
 import re
 from pathlib import Path
-from uuid import uuid4
 UPLOAD_DIRECTORY = Path("/srv/storage/shared")
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
 CHUNK_SIZE = 1024 * 1024  # 1 MB
@@ -24,7 +23,9 @@ app.add_middleware(
     allow_origins=[os.getenv("SERVER_IP"),
                    os.getenv("TAILSCALE_IP"),
                    "http://homeserverhp:5173",
-                   "http://homeserverhp.lan:5173",],
+                   "http://homeserverhp.lan:5173",
+                   "http://hommeserverhp",
+                   ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,19 +163,18 @@ async def upload_file(
     # Handle both Unix and Windows-style paths supplied by a client.
     basename = original_name.replace("\\", "/").split("/")[-1]
 
-    # Keep only conservative filename characters.
-    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", basename)
+    # Preserve normal user-visible names while removing unsafe characters.
+    safe_name = re.sub(r"[\x00-\x1f\x7f]", "_", basename)
     safe_name = safe_name.lstrip(".")
 
     if not safe_name or safe_name in {".", ".."}:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    # Limit the filename length while preserving a short extension.
+    # Limit the filename length while preserving its extension.
     suffix = Path(safe_name).suffix[:20]
-    stem = Path(safe_name).stem[:120] or "upload"
-
-    # A random prefix prevents one upload from overwriting another.
-    stored_name = f"{uuid4().hex}_{stem}{suffix}"
+    stem = Path(safe_name).stem
+    max_stem_length = max(1, 240 - len(suffix))
+    stored_name = f"{stem[:max_stem_length] or 'upload'}{suffix}"
 
     upload_root = UPLOAD_DIRECTORY.resolve()
     requested_directory = (upload_root / folder).resolve()
@@ -197,6 +197,13 @@ async def upload_file(
         )
     
     destination = requested_directory / stored_name
+
+    # Keep the original-looking name and avoid overwriting an existing file.
+    duplicate_number = 2
+    while destination.exists():
+        stored_name = f"{stem[:max_stem_length - len(str(duplicate_number)) - 1] or 'upload'} ({duplicate_number}){suffix}"
+        destination = requested_directory / stored_name
+        duplicate_number += 1
 
 
     bytes_written = 0
