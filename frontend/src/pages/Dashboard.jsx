@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-
+import { useAuth } from '../auth/AuthContext'
 import StatCard from '../components/StatCard'
 import HistoryChart from '../components/HistoryChart'
-
-// Backend runs on the same host as the frontend, just on a different port
-const API_URL = `http://${window.location.hostname}:8000`
 
 const formatBytes = bytes => {
   if (bytes == null) return 'Unavailable'
@@ -19,6 +15,7 @@ const formatBytes = bytes => {
 const formatRate = bytesPerSecond => `${formatBytes(bytesPerSecond)}/s`
 
 function Dashboard() {
+  const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [history, setHistory] = useState([])
 
@@ -80,9 +77,20 @@ function Dashboard() {
             dangerAt={90}
             subValue={stats.cpu_temp != null ? `${stats.cpu_temp.toFixed(1)}°C` : null}
           />
-          <Link to="/ram" className="stat-card-link">
-            <StatCard label="RAM Usage" value={stats.ram_percent} unit="%" warningAt={70} dangerAt={90} subValue={stats.ram_used != null && stats.ram_size != null ? `${(stats.ram_used / (1024 * 1024)).toFixed(0)} MB of ${(stats.ram_size / (1024 * 1024)).toFixed(0)} MB` : null} />
-          </Link>
+          <StatCard
+            label="RAM Usage"
+            value={stats.ram_percent}
+            unit="%"
+            warningAt={70}
+            dangerAt={90}
+            subValue={
+              stats.ram_used != null && stats.ram_size != null
+                ? `${(stats.ram_used / (1024 * 1024)).toFixed(0)} MB of ${
+                    (stats.ram_size / (1024 * 1024)).toFixed(0)
+                  } MB`
+                : null
+            }
+          />
           <StatCard label="Disk Usage" value={stats.disk_percent} unit="%" warningAt={70} dangerAt={90} subValue={stats.disk_used != null && stats.disk_size != null ? `${(stats.disk_used / (1024 * 1024 * 1024)).toFixed(2)} GB of ${(stats.disk_size / (1024 * 1024 * 1024)).toFixed(2)} GB` : null} />
           <StatCard label="Network Download" value={formatRate(stats.network_receive_rate)} subValue={stats.network_bytes_received != null ? `${formatBytes(stats.network_bytes_received)} received` : null} />
           <StatCard label="Network Upload" value={formatRate(stats.network_send_rate)} subValue={stats.network_bytes_sent != null ? `${formatBytes(stats.network_bytes_sent)} sent` : null} />

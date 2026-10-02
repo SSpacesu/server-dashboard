@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-
-const API_URL = `http://${window.location.hostname}:8000`
+import { useAuth } from '../auth/AuthContext'
 
 function formatMB(bytes) {
   return bytes != null ? `${(bytes / (1024 * 1024)).toFixed(0)} MB` : 'N/A'
@@ -53,7 +52,7 @@ function RamDetails() {
 
   return (
     <>
-      <h1>RAM Usage</h1>
+      <h1>Ram Usage</h1>
       <p className="ram-details-back">
         <Link to="/">&larr; Back to Dashboard</Link>
       </p>

@@ -289,3 +289,35 @@
 .upload-queue__list li > button {
   flex: 0 0 auto;
 }
+
+@media (max-width: 600px) {
+  .file-browser > nav {
+    gap: 4px;
+    padding: 8px;
+    font-size: 14px;
+  }
+
+  .file-browser .folder-list,
+  .file-browser .file-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .file-browser .folder-list > li,
+  .file-browser .file-list > li {
+    padding: 6px;
+  }
+
+  .file-browser .file-list > li div {
+    font-size: 13px;
+  }
+
+  .upload-panel {
+    padding: 14px;
+  }
+
+  .file-drop-zone {
+    min-height: 120px;
+    padding: 16px;
+  }
+}

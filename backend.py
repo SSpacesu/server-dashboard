@@ -1,6 +1,22 @@
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
+from pydantic import BaseModel #data validation
+from auth import (             #auth.py func
+    SESSION_DURATION_HOURS,
+    create_session_token,
+    hash_session_token,
+    verify_password,
+) 
 import psycopg
 import os
 import time
@@ -17,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
-
+#MARK: Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("SERVER_IP"),
@@ -43,6 +59,195 @@ def get_connection():
         port=os.getenv("DB_PORT")
     )
 
+
+
+
+# LOGIN
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+#MARK:LOGIN
+@app.post("/api/login")
+def login(credentials: LoginRequest, response: Response):
+    username = credentials.username.strip().lower()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    user_id,
+                    username,
+                    password_hash,
+                    is_admin,
+                    is_active
+                FROM app_users
+                WHERE username = %s
+                """,
+                (username,),
+            )
+
+            user = cursor.fetchone()
+
+            if user is None:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid username or password",
+                )
+
+            (
+                user_id,
+                stored_username,
+                stored_password_hash,
+                is_admin,
+                is_active,
+            ) = user
+
+            # Check that the user is active and the password is correct.
+            if not is_active or not verify_password(
+                credentials.password,
+                stored_password_hash,
+            ):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid username or password",
+                )
+
+            # Record the successful login.
+            cursor.execute(
+                """
+                UPDATE app_users
+                SET last_login_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+
+            # Create a session and store only its hashed token.
+            token, token_hash, expires_at = create_session_token()
+
+            cursor.execute(
+                """
+                INSERT INTO auth_sessions
+                    (token_hash, user_id, expires_at)
+                VALUES
+                    (%s, %s, %s)
+                """,
+                (token_hash, user_id, expires_at),
+            )
+
+    # The database transaction has now completed successfully.
+    response.set_cookie(
+        key="server_dashboard_session",
+        value=token,
+        max_age=SESSION_DURATION_HOURS * 60 * 60,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        path="/",
+    )
+
+    return {
+        "user_id": user_id,
+        "username": stored_username,
+        "is_admin": is_admin,
+    }
+
+#MARK: LOGOUT
+@app.post("/api/logout")
+def logout(request: Request, response: Response):
+    token = request.cookies.get("server_dashboard_session")
+
+    if token is not None:
+        token_hash = hash_session_token(token)
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM auth_sessions
+                    WHERE token_hash = %s
+                    """,
+                    (token_hash,),
+                )
+
+    response.delete_cookie(
+        key="server_dashboard_session",
+        path="/",
+    )
+
+    return {"message": "Logged out"}
+
+
+#MARK: GET CURRENT USER
+def get_current_user(request: Request) -> dict:
+    token = request.cookies.get("server_dashboard_session")
+
+    if token is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+        )
+
+    token_hash = hash_session_token(token)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    app_users.user_id,
+                    app_users.username,
+                    app_users.is_admin
+                FROM auth_sessions
+                JOIN app_users
+                    ON app_users.user_id = auth_sessions.user_id
+                WHERE auth_sessions.token_hash = %s
+                  AND auth_sessions.expires_at > CURRENT_TIMESTAMP
+                  AND app_users.is_active = TRUE
+                """,
+                (token_hash,),
+            )
+
+            user = cursor.fetchone()
+
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Session is invalid or expired",
+        )
+
+    user_id, username, is_admin = user
+
+    return {
+        "user_id": user_id,
+        "username": username,
+        "is_admin": is_admin,
+    }
+
+#MARK: REQUIRE ADMIN
+def require_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    if not current_user["is_admin"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+
+    return current_user
+
+#MARK: ME
+@app.get("/api/me")
+def get_logged_in_user(
+    current_user: dict = Depends(get_current_user),
+):
+    return current_user
+
+
+
+#MARK: STATS
 @app.post("/api/stats")
 def receive_stats(stats: dict):
     global latest_stats
@@ -75,11 +280,17 @@ def receive_stats(stats: dict):
     return {"message": "Stats received"}
 
 @app.get("/api/stats")
-def get_stats():
+def get_stats(
+    _current_user: dict = Depends(get_current_user),
+):
     return latest_stats
 
+#MARK:HISTORY
 @app.get("/api/history")
-def get_history():
+def get_history(
+    _current_user: dict = Depends(get_current_user),
+):
+    
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -108,8 +319,11 @@ def get_history():
 
 ## for process list on frontend
 process_cache = {}
+#MARK:PROCESSES
 @app.get("/api/processes")
-def get_processes():
+def get_processes( 
+    _admin: dict = Depends(require_admin),
+):
     processes = []
 
     current_pids = set()
@@ -153,10 +367,13 @@ def get_processes():
 
 
 #File uploads
+#MARK: UPLOAD
 @app.post("/api/upload")
 async def upload_file(
     file: UploadFile = File(...),
     folder: str = Form(""),
+    _current_user: dict = Depends(get_current_user),
+
 ):
     original_name = file.filename or ""
 
@@ -242,8 +459,12 @@ async def upload_file(
         "size": bytes_written,
     }
 
+#MARK:FOLDERS
 @app.get("/api/folders")
-def list_folders(path: str = ""):
+def list_folders(
+    path: str = "",
+    _current_user: dict = Depends(get_current_user),
+):
     upload_root = UPLOAD_DIRECTORY.resolve()
     requested_directory = (upload_root / path).resolve()
 
@@ -284,8 +505,13 @@ def list_folders(path: str = ""):
         "files": files,
     }
 
+#MARK:FILES
 @app.get("/api/file")
-def get_file(path: str, download: bool = False):
+def get_file(
+    path: str, 
+    download: bool = False,  
+    _current_user: dict = Depends(get_current_user),
+    ):
     upload_root = UPLOAD_DIRECTORY.resolve()
     requested_file = (upload_root / path).resolve()
 
