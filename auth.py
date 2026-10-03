@@ -11,7 +11,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored_hash: str) -> bool:
     return password_hasher.verify(password, stored_hash)
 
-SESSION_DURATION_HOURS = 12
+SESSION_DURATION_HOURS = 72
 
 
 def hash_session_token(token: str) -> str:

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../auth/AuthContext'
 import StatCard from '../components/StatCard'
 import HistoryChart from '../components/HistoryChart'
+import { useStats } from '../stats/StatsContext'
 
 const formatBytes = bytes => {
   if (bytes == null) return 'Unavailable'
@@ -15,24 +15,8 @@ const formatBytes = bytes => {
 const formatRate = bytesPerSecond => `${formatBytes(bytesPerSecond)}/s`
 
 function Dashboard() {
-  const { user } = useAuth()
-  const [stats, setStats] = useState(null)
+  const { stats } = useStats()
   const [history, setHistory] = useState([])
-
-  // Poll the latest snapshot every 2s for the live stat cards
-  useEffect(() => {
-    const fetchStats = () => {
-      fetch(`/api/stats`)
-        .then(response => response.json())
-        .then(data => setStats(data))
-    }
-
-    fetchStats()
-
-    const interval = setInterval(fetchStats, 2000)
-
-    return () => clearInterval(interval)
-  }, [])
 
   // History updates less often since the backend only persists a sample every 15s
   useEffect(() => {
@@ -65,7 +49,7 @@ function Dashboard() {
 
   return (
     <>
-      <h1>Server Dashboard</h1>
+      <h1 className="header">Home Server Dashboard</h1>
       <div className="panel">
         <h2>Usage Stats</h2>
         <div className="stat-row">

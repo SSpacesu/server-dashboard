@@ -17,6 +17,7 @@ from auth import (             #auth.py func
     hash_session_token,
     verify_password,
 ) 
+from datetime import datetime, timezone
 import psycopg
 import os
 import time
@@ -253,7 +254,12 @@ def receive_stats(stats: dict):
     global latest_stats
     global last_saved_time
 
-    latest_stats = stats
+    received_at = datetime.now(timezone.utc)
+
+    latest_stats = {
+        **stats,
+        "last_updated": received_at.isoformat(),
+    }
 
     current_time = time.time()
     ##sends these to database

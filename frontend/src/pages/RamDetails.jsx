@@ -1,30 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import StatCard from '../components/StatCard'
+import { useStats } from '../stats/StatsContext'
 
 function formatMB(bytes) {
   return bytes != null ? `${(bytes / (1024 * 1024)).toFixed(0)} MB` : 'N/A'
 }
 
 function RamDetails() {
-  const [stats, setStats] = useState(null)
+  const { stats } = useStats()
   const [processes, setProcesses] = useState([])
   // Column currently used to order the process table; toggled by clicking a header
   const [sortKey, setSortKey] = useState('ram_percent')
-
-  useEffect(() => {
-    const fetchStats = () => {
-      fetch(`/api/stats`)
-        .then(response => response.json())
-        .then(data => setStats(data))
-    }
-
-    fetchStats()
-
-    const interval = setInterval(fetchStats, 2000)
-
-    return () => clearInterval(interval)
-  }, [])
 
   useEffect(() => {
     const fetchProcesses = () => {
@@ -58,21 +45,31 @@ function RamDetails() {
       </p>
 
       <div className="panel">
-        <h2>Memory Overview</h2>
+        <h2>Usage Overview</h2>
         {stats ? (
           <div className="stat-row">
-            <div className="stat-card">
-              <span className="stat-card-label">RAM Usage</span>
-              <span className="stat-card-value">
-                {stats.ram_percent}
-                <span className="stat-card-unit">%</span>
-              </span>
-              {stats.ram_used != null && stats.ram_size != null && (
-                <span className="stat-card-subvalue">
-                  {formatMB(stats.ram_used)} of {formatMB(stats.ram_size)}
-                </span>
-              )}
-            </div>
+            <StatCard
+              label="CPU Usage"
+              value={stats.cpu_percent}
+              unit="%"
+              warningAt={70}
+              dangerAt={90}
+              subValue={stats.cpu_temp != null ? `${stats.cpu_temp.toFixed(1)}°C` : null}
+
+            />
+            <StatCard
+              label="RAM Usage"
+              value={stats.ram_percent}
+              unit="%"
+              warningAt={70}
+              dangerAt={90}
+              subValue={
+                stats.ram_used != null && stats.ram_size != null
+                  ? `${formatMB(stats.ram_used)} of ${formatMB(stats.ram_size)}`
+                  : null
+              }
+            />
+            
           </div>
         ) : (
           <p>Loading...</p>
