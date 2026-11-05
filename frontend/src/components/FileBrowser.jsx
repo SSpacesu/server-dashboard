@@ -70,12 +70,6 @@ function FileBrowser() {
 
         setCurrentPath(nextPath)
     }
-        
-    const goUp = () => {
-        const pathParts = currentPath.split('/').filter(Boolean)
-        pathParts.pop()
-        setCurrentPath(pathParts.join('/'))
-    }
 
     const pathParts = currentPath.split('/').filter(Boolean)
 

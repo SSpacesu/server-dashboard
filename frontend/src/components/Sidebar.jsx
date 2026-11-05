@@ -48,11 +48,10 @@ function Sidebar() {
         <Link to="/storage" onClick={() => setIsOpen(false)}>Storage</Link>
         {/* History and Services pages don't exist yet */}
         <a href="#" onClick={() => setIsOpen(false)}>History</a>
-        <a href="#" onClick={() => setIsOpen(false)}>Services</a>
+        <Link to="/services" onClick={() => setIsOpen(false)}>Services</Link>
         {user.is_admin && (
           <Link to="/ram" onClick={() => setIsOpen(false)}>Ram</Link>
         )}
-        <Link to="/settings" onClick={() => setIsOpen(false)}>Settings</Link>
       </nav>
       <div className="sidebar-account" id="sidebar-account">
         <span>{user.username}</span>

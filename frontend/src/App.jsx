@@ -3,13 +3,13 @@ import Sidebar from './components/Sidebar'
 import MonitorStatus from './components/MonitorStatus'
 import Dashboard from './pages/Dashboard'
 import RamDetails from './pages/RamDetails'
-import Settings from './pages/Settings'
 import './App.css'
 import FileBrowser from './components/FileBrowser'
 import { useAuth } from './auth/AuthContext'
 import Login from './pages/Login'
 import RequireAdmin from './components/RequireAdmin'
 import { StatsProvider } from './stats/StatsContext'
+import Services from './pages/Services'
 
 function App() {
   const { user, loading } = useAuth()
@@ -32,7 +32,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/ram" element={<RequireAdmin><RamDetails /></RequireAdmin>} />
             <Route path="/storage" element={<FileBrowser />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/services" element={<RequireAdmin><Services /></RequireAdmin>} />
           </Routes>
         </main>
       </div>

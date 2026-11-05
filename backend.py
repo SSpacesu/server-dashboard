@@ -32,6 +32,15 @@ CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 from dotenv import load_dotenv
 load_dotenv()
+import subprocess
+MONITORED_SERVICES = {
+    "Dashboard API": "server-dashboard-api.service",
+    "Monitoring Agent": "server-dashboard-monitor.service",
+    "Web Server": "nginx.service",
+    "PostgreSQL": "postgresql@18-main.service",
+    "Samba File Sharing": "smbd.service",
+    "Tailscale": "tailscaled.service",
+}
 
 app = FastAPI()
 #MARK: Middleware
@@ -370,6 +379,58 @@ def get_processes(
             del process_cache[pid]
 
     return processes
+
+
+# MARK: SERVICES
+@app.get("/api/services")
+def get_services(
+    _admin: dict = Depends(require_admin),
+):
+    services = []
+
+    for display_name, unit_name in MONITORED_SERVICES.items():
+        try:
+            result = subprocess.run(
+                [
+                    "systemctl",
+                    "show",
+                    unit_name,
+                    "--property=ActiveState",
+                    "--property=SubState",
+                    "--no-pager",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+
+            properties = {}
+
+            for line in result.stdout.splitlines():
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    properties[key] = value
+
+            if result.returncode == 0:
+                active_state = properties.get("ActiveState", "unknown")
+                sub_state = properties.get("SubState", "unknown")
+            else:
+                active_state = "unknown"
+                sub_state = "unknown"
+
+        except (OSError, subprocess.TimeoutExpired):
+            active_state = "unknown"
+            sub_state = "unknown"
+
+        services.append({
+            "name": display_name,
+            "unit": unit_name,
+            "active_state": active_state,
+            "sub_state": sub_state,
+        })
+
+    return services
 
 
 #File uploads

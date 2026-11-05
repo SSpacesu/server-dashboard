@@ -104,6 +104,57 @@
   font-size: 20px;
 }
 
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.service-item {
+  display: flex;
+  padding: 4px 0;
+}
+
+.service-information {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.service-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-information strong {
+  color: var(--text-h);
+}
+
+.service-information small {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.service-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.service-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--success);
+  flex-shrink: 0;
+}
+
 .header{
   text-align: left;
 }
